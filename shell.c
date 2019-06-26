@@ -21,7 +21,7 @@ FILE* getStream(int argc, char *argv[]) {
 }
 
 char** tokenize(char *line, size_t linelength, size_t *numOfTokens) {
-  char **tokens = calloc(1, sizeof(char *));
+  char **tokens;
   char *token;
   size_t index = 0;
   while((token = strsep(&line, " ")) != NULL) {
