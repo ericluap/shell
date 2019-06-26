@@ -67,5 +67,9 @@ int main(int argc, char *argv[]) {
   }
   free(line);
 
+  if(argc == 2) {
+    fclose(stream);
+  }
+
   return 0;
 }
