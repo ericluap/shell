@@ -115,6 +115,7 @@ int main(int argc, char *argv[]) {
     printf("wish> ");
   }
   free(line);
+  free(path);
 
   if(argc == 2) {
     fclose(stream);
