@@ -5,6 +5,12 @@
 #include <string.h>
 #include <unistd.h>
 
+typedef struct strarray strarray;
+struct strarray {
+  char **array;
+  size_t length;
+};
+
 FILE* getStream(int argc, char *argv[]) {
   if(argc > 2) {
     exit(1);
@@ -48,8 +54,8 @@ void error() {
   write(STDERR_FILENO, error_message, strlen(error_message)); 
 }
 
-void runExit(char **input, size_t numOfTokens) {
-  if(numOfTokens > 1) {
+void runExit(strarray input) {
+  if(input.length > 1) {
     error();
   }
   else {
@@ -57,12 +63,12 @@ void runExit(char **input, size_t numOfTokens) {
   }
 }
 
-void runCd(char **input, size_t numOfTokens) {
-  if(numOfTokens != 2) {
+void runCd(strarray input) {
+  if(input.length != 2) {
     error();
   }
   else {
-    int flag = chdir(input[1]);
+    int flag = chdir(input.array[1]);
 
     if(flag != 0) {
       error();
@@ -70,14 +76,14 @@ void runCd(char **input, size_t numOfTokens) {
   }
 }
 
-void runPath(char **input, size_t numOfTokens, char ***path, size_t *pathLength) {
-  size_t numPathArguments = numOfTokens-1;
-  *pathLength = numPathArguments;
-  *path = realloc(*path, numPathArguments*sizeof(char *));
+void runPath(strarray input, strarray *path) {
+  size_t numPathArguments = input.length-1;
+  path->length = numPathArguments;
+  path->array = realloc(path->array, numPathArguments*sizeof(char *));
   
   for(size_t i = 0; i < numPathArguments; i++) {
-    (*path)[i] = malloc(strlen(input[i+1])+1);
-    strcpy((*path)[i], input[i+1]);
+    path->array[i] = malloc(strlen(input.array[i+1])+1);
+    strcpy(path->array[i], input.array[i+1]);
   }
 }
 
@@ -96,17 +102,17 @@ void executeProgram(char **input, char *filePath) {
   }
 }
 
-void runCommandFromPath(char **input, size_t numOfTokens, char **path, size_t pathLength) {
+void runCommandFromPath(strarray input, strarray path) {
   char *filePath = NULL;
-  for(size_t i = 0; i < pathLength; i++) {
-    filePath = realloc(filePath, strlen(path[i])+strlen(input[0])+2);
+  for(size_t i = 0; i < path.length; i++) {
+    filePath = realloc(filePath, strlen(path.array[i])+strlen(input.array[0])+2);
     filePath[0] = '\0';
-    strcat(filePath, path[i]);
+    strcat(filePath, path.array[i]);
     strcat(filePath, "/");
-    strcat(filePath, input[0]);
+    strcat(filePath, input.array[0]);
 
     if(access(filePath, X_OK) == 0) {
-      executeProgram(input, filePath);
+      executeProgram(input.array, filePath);
       free(filePath);
       return;
     }
@@ -116,29 +122,29 @@ void runCommandFromPath(char **input, size_t numOfTokens, char **path, size_t pa
   error();
 }
 
-void runCommand(char **input, size_t numOfTokens, char ***path, size_t *pathLength) {
-  char *name = input[0];
+void runCommand(strarray input, strarray *path) {
+  char *name = input.array[0];
 
   if(strncmp(name, "exit", 4) == 0) {
-    runExit(input, numOfTokens);
+    runExit(input);
   }
   else if(strncmp(name, "cd", 2) == 0) {
-    runCd(input, numOfTokens);
+    runCd(input);
   }
   else if(strncmp(name, "path", 4) == 0) {
-    runPath(input, numOfTokens, path, pathLength);
+    runPath(input, path);
   }
   else {
-    runCommandFromPath(input, numOfTokens, *path, *pathLength);
+    runCommandFromPath(input, *path);
   }
 }
 
 int main(int argc, char *argv[]) {
   FILE *stream = getStream(argc, argv);
 
-  char **path = calloc(1, sizeof(char *));
-  path[0] = "/bin";
-  size_t pathLength = 1;
+  strarray path = {.array = calloc(1, sizeof(char *)),
+                   .length = 1};
+  path.array[0] = "/bin";
 
   size_t numOfTokens = 0;
 
@@ -149,16 +155,17 @@ int main(int argc, char *argv[]) {
   while((linelength = getline(&line, &linecap, stream)) > 0) {
     line[strcspn(line, "\n")] = 0;
 
-    char **input = tokenize(line, linelength, &numOfTokens);
+    strarray input = {.array = tokenize(line, linelength, &numOfTokens),
+                      .length = numOfTokens};
 
-    runCommand(input, numOfTokens, &path, &pathLength);
+    runCommand(input, &path);
 
-    free(input);
+    free(input.array);
 
     printf("wish> ");
   }
   free(line);
-  free(path);
+  free(path.array);
 
   if(argc == 2) {
     fclose(stream);
