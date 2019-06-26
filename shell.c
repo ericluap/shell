@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 FILE* getStream(int argc, char *argv[]) {
   if(argc > 2) {
@@ -37,33 +38,81 @@ char** tokenize(char *line, size_t linelength, size_t *numOfTokens) {
   return tokens;
 }
 
-bool isBuiltInCommand(char *command) {
-  return (strncmp(command, "exit", 5) == 0 ||
-          strncmp(command, "cd", 5) == 0 ||
-          strncmp(command, "path", 5) == 0);
+void error() {
+  char error_message[30] = "An error has occurred\n";
+  write(STDERR_FILENO, error_message, strlen(error_message)); 
+}
+
+void runExit(char **input, size_t numOfTokens) {
+  if(numOfTokens > 1) {
+    error();
+  }
+  else {
+    exit(1);
+  }
+}
+
+void runCd(char **input, size_t numOfTokens) {
+  if(numOfTokens != 2) {
+    error();
+  }
+  else {
+    int flag = chdir(input[1]);
+
+    if(flag != 0) {
+      error();
+    }
+  }
+}
+
+void runPath(char **input, size_t numOfTokens, char ***path, size_t *pathLength) {
+  size_t numPathArguments = numOfTokens-1;
+  *pathLength = numPathArguments;
+  *path = realloc(*path, numPathArguments*sizeof(char *));
+  
+  for(size_t i = 0; i < numPathArguments; i++) {
+    (*path)[i] = malloc(strlen(input[i+1])+1);
+    strcpy((*path)[i], input[i+1]);
+  }
+}
+
+void runCommand(char **input, size_t numOfTokens, char ***path, size_t *pathLength) {
+  char *name = input[0];
+
+  if(strncmp(name, "exit", 4) == 0) {
+    runExit(input, numOfTokens);
+  }
+  else if(strncmp(name, "cd", 2) == 0) {
+    runCd(input, numOfTokens);
+  }
+  else if(strncmp(name, "path", 4) == 0) {
+    runPath(input, numOfTokens, path, pathLength);
+  }
 }
 
 int main(int argc, char *argv[]) {
   FILE *stream = getStream(argc, argv);
 
-  char *path[] = {"/bin"};
+  char **path = calloc(1, sizeof(char *));
+  path[0] = "/bin";
+  size_t pathLength = 1;
 
   size_t numOfTokens = 0;
 
   char *line = NULL;
   size_t linecap = 0;
   ssize_t linelength;
+  printf("wish> ");
   while((linelength = getline(&line, &linecap, stream)) > 0) {
     line[strcspn(line, "\n")] = 0;
 
     char **input = tokenize(line, linelength, &numOfTokens);
 
-    if(isBuiltInCommand(input[0])) {
-    }
-    else {
-    }
+    runCommand(input, numOfTokens, &path, &pathLength);
 
     free(input);
+
+    printf("wish> ");
   }
   free(line);
 
