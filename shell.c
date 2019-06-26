@@ -13,30 +13,11 @@ struct strarray {
   size_t length;
 };
 
-void printStrarray(strarray input) {
-  for(size_t i = 0; i < input.length; i++) {
-    printf("%s\n", input.array[i]);
-  }
-}
-
 typedef struct command_t command_t;
 struct command_t {
   strarray input;
   char *output;
 };
-
-void printCommand(command_t command) {
-  printf("command: \n");
-  printStrarray(command.input);
-  printf("%s\n", command.output);
-  printf("--------------\n");
-}
-
-void printCommands(command_t *commands, size_t numOfCommands) {
-  for(size_t i = 0; i < numOfCommands; i++) {
-    printCommand(commands[i]);
-  }
-}
 
 FILE* getStream(int argc, char *argv[]) {
   if(argc > 2) {
@@ -66,10 +47,6 @@ char** tokenize(char *line, size_t linelength, size_t *numOfTokens) {
     strcpy(tokens[index], token);
     index++;
   }
-
-  //tokens = realloc(tokens, (index+1)*sizeof(char *));
-  //tokens[index] = malloc(1);
-  //tokens[index] = NULL;
 
   *numOfTokens = index;
 
@@ -110,8 +87,6 @@ command_t* parseInput(strarray input, size_t *numOfCommands) {
        }
     }
     else if(strncmp(input.array[i], ">", 1) == 0) {
-      // TODO: check i+1>input.length and throw error
-      // TODO: also if input.array[i+2] does not exit or is != to "&" this is an error
       if(i+2 < input.length && strncmp(input.array[i+2], "&", 1) != 0) {
         return commands;
       }
