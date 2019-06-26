@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,6 +37,12 @@ char** tokenize(char *line, size_t linelength, size_t *numOfTokens) {
   return tokens;
 }
 
+bool isBuiltInCommand(char *command) {
+  return (strncmp(command, "exit", 5) == 0 ||
+          strncmp(command, "cd", 5) == 0 ||
+          strncmp(command, "path", 5) == 0);
+}
+
 int main(int argc, char *argv[]) {
   FILE *stream = getStream(argc, argv);
 
@@ -47,10 +54,13 @@ int main(int argc, char *argv[]) {
   size_t linecap = 0;
   ssize_t linelength;
   while((linelength = getline(&line, &linecap, stream)) > 0) {
+    line[strcspn(line, "\n")] = 0;
+
     char **input = tokenize(line, linelength, &numOfTokens);
 
-    for(size_t i = 0; i < numOfTokens; i++) {
-      printf("token: %s\n", input[i]);
+    if(isBuiltInCommand(input[0])) {
+    }
+    else {
     }
 
     free(input);
