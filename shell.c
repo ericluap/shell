@@ -248,6 +248,8 @@ int main(int argc, char *argv[]) {
     runCommands(commands, numOfCommands, &path);
 
     free(input.array);
+    free(commands->input.array);
+    free(commands);
 
     if(argc != 2) {
       printf("wish> ");
