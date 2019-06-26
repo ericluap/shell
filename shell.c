@@ -1,15 +1,42 @@
 #include <errno.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 typedef struct strarray strarray;
 struct strarray {
   char **array;
   size_t length;
 };
+
+void printStrarray(strarray input) {
+  for(size_t i = 0; i < input.length; i++) {
+    printf("%s\n", input.array[i]);
+  }
+}
+
+typedef struct command_t command_t;
+struct command_t {
+  strarray input;
+  char *output;
+};
+
+void printCommand(command_t command) {
+  printf("command: \n");
+  printStrarray(command.input);
+  printf("%s\n", command.output);
+  printf("--------------\n");
+}
+
+void printCommands(command_t *commands, size_t numOfCommands) {
+  for(size_t i = 0; i < numOfCommands; i++) {
+    printCommand(commands[i]);
+  }
+}
 
 FILE* getStream(int argc, char *argv[]) {
   if(argc > 2) {
@@ -40,13 +67,75 @@ char** tokenize(char *line, size_t linelength, size_t *numOfTokens) {
     index++;
   }
 
-  tokens = realloc(tokens, (index+1)*sizeof(char *));
-  tokens[index] = malloc(1);
-  tokens[index] = NULL;
+  //tokens = realloc(tokens, (index+1)*sizeof(char *));
+  //tokens[index] = malloc(1);
+  //tokens[index] = NULL;
 
   *numOfTokens = index;
 
   return tokens;
+}
+
+void appendCommand(command_t **commands, size_t *numOfCommands, strarray commandString, char *output) {
+  strarray *inputArray = malloc(sizeof(strarray));
+  inputArray->array = malloc((commandString.length+1)*sizeof(char*));
+  for(size_t i = 0; i < commandString.length; i++) {
+    inputArray->array[i] = malloc(strlen(commandString.array[i])+1);
+    strcpy(inputArray->array[i], commandString.array[i]);
+  }
+
+  inputArray->array[commandString.length] = malloc(1);
+  inputArray->array[commandString.length] = NULL;
+
+  inputArray->length = commandString.length;
+  
+  command_t *command = malloc(sizeof(command_t));
+  command->input = *inputArray;
+  command->output = output;
+  *commands = realloc(*commands, (*numOfCommands+1)*sizeof(command_t));
+  (*commands)[*numOfCommands] = *command;
+  (*numOfCommands)++;
+}
+
+command_t* parseInput(strarray input, size_t *numOfCommands) {
+  strarray commandString = {.array = calloc(1, sizeof(char)), .length = 0};
+  command_t *commands = calloc(1, 1);
+  *numOfCommands = 0;
+  for(size_t i = 0; i < input.length; i++) {
+    if(strncmp(input.array[i], "&",  1) == 0) {
+       if(commandString.length != 0) {
+          appendCommand(&commands, numOfCommands, commandString, "stdout");
+          commandString.array = realloc(commandString.array, 0);
+          commandString.length = 0;
+       }
+    }
+    else if(strncmp(input.array[i], ">", 1) == 0) {
+      // TODO: check i+1>input.length and throw error
+      // TODO: also if input.array[i+2] does not exit or is != to "&" this is an error
+      char *file = input.array[i+1];
+      
+      appendCommand(&commands, numOfCommands, commandString, file);
+
+      commandString.array = realloc(commandString.array, 0);
+      commandString.length = 0;
+      
+      i++;
+    }
+    else {
+      commandString.array = realloc(commandString.array, (commandString.length+1)*sizeof(char *));
+      commandString.array[commandString.length] = malloc(strlen(input.array[i])+1);
+      strcpy(commandString.array[commandString.length], input.array[i]);
+      commandString.length++;
+    }
+  }
+
+  if(commandString.length != 0) {
+    appendCommand(&commands, numOfCommands, commandString, "stdout");
+    commandString.array = realloc(commandString.array, 0);
+    commandString.length = 0;
+  }
+
+  return commands;
 }
 
 void error() {
@@ -87,13 +176,19 @@ void runPath(strarray input, strarray *path) {
   }
 }
 
-void executeProgram(char **input, char *filePath) {
+void executeProgram(command_t command, char *filePath) {
   int rc = fork();
   if(rc < 0) {
     error();
   }
   else if(rc == 0) {
-    execv(filePath, input); 
+    if(strncmp(command.output, "stdout", 6) != 0) {
+      close(STDERR_FILENO);
+      open(command.output, O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU);
+      close(STDOUT_FILENO);
+      open(command.output, O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU);
+    }
+    execv(filePath, command.input.array); 
     error();
     exit(1);
   }
@@ -102,9 +197,10 @@ void executeProgram(char **input, char *filePath) {
   }
 }
 
-void runCommandFromPath(strarray input, strarray path) {
+void runCommandFromPath(command_t command, strarray path) {
   char *filePath = NULL;
   for(size_t i = 0; i < path.length; i++) {
+    strarray input = command.input;
     filePath = realloc(filePath, strlen(path.array[i])+strlen(input.array[0])+2);
     filePath[0] = '\0';
     strcat(filePath, path.array[i]);
@@ -112,7 +208,7 @@ void runCommandFromPath(strarray input, strarray path) {
     strcat(filePath, input.array[0]);
 
     if(access(filePath, X_OK) == 0) {
-      executeProgram(input.array, filePath);
+      executeProgram(command, filePath);
       free(filePath);
       return;
     }
@@ -122,20 +218,23 @@ void runCommandFromPath(strarray input, strarray path) {
   error();
 }
 
-void runCommand(strarray input, strarray *path) {
-  char *name = input.array[0];
+void runCommands(command_t *commands, size_t numOfCommands, strarray *path) {
+  for(size_t i = 0; i < numOfCommands; i++) {
+    strarray input = commands[i].input;
+    char *name = input.array[0];
 
-  if(strncmp(name, "exit", 4) == 0) {
-    runExit(input);
-  }
-  else if(strncmp(name, "cd", 2) == 0) {
-    runCd(input);
-  }
-  else if(strncmp(name, "path", 4) == 0) {
-    runPath(input, path);
-  }
-  else {
-    runCommandFromPath(input, *path);
+    if(strncmp(name, "exit", 4) == 0) {
+      runExit(input);
+    }
+    else if(strncmp(name, "cd", 2) == 0) {
+      runCd(input);
+    }
+    else if(strncmp(name, "path", 4) == 0) {
+      runPath(input, path);
+    }
+    else {
+      runCommandFromPath(commands[i], *path);
+    }
   }
 }
 
@@ -147,6 +246,7 @@ int main(int argc, char *argv[]) {
   path.array[0] = "/bin";
 
   size_t numOfTokens = 0;
+  size_t numOfCommands = 0;
 
   char *line = NULL;
   size_t linecap = 0;
@@ -158,7 +258,9 @@ int main(int argc, char *argv[]) {
     strarray input = {.array = tokenize(line, linelength, &numOfTokens),
                       .length = numOfTokens};
 
-    runCommand(input, &path);
+    command_t *commands = parseInput(input, &numOfCommands); 
+
+    runCommands(commands, numOfCommands, &path);
 
     free(input.array);
 
