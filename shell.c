@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +33,10 @@ char** tokenize(char *line, size_t linelength, size_t *numOfTokens) {
     strcpy(tokens[index], token);
     index++;
   }
+
+  tokens = realloc(tokens, (index+1)*sizeof(char *));
+  tokens[index] = malloc(1);
+  tokens[index] = NULL;
 
   *numOfTokens = index;
 
@@ -76,6 +81,41 @@ void runPath(char **input, size_t numOfTokens, char ***path, size_t *pathLength)
   }
 }
 
+void executeProgram(char **input, char *filePath) {
+  int rc = fork();
+  if(rc < 0) {
+    error();
+  }
+  else if(rc == 0) {
+    execv(filePath, input); 
+    error();
+    exit(1);
+  }
+  else {
+    int rc_wait = wait(NULL);
+  }
+}
+
+void runCommandFromPath(char **input, size_t numOfTokens, char **path, size_t pathLength) {
+  char *filePath = NULL;
+  for(size_t i = 0; i < pathLength; i++) {
+    filePath = realloc(filePath, strlen(path[i])+strlen(input[0])+2);
+    filePath[0] = '\0';
+    strcat(filePath, path[i]);
+    strcat(filePath, "/");
+    strcat(filePath, input[0]);
+
+    if(access(filePath, X_OK) == 0) {
+      executeProgram(input, filePath);
+      free(filePath);
+      return;
+    }
+  }
+  free(filePath);
+
+  error();
+}
+
 void runCommand(char **input, size_t numOfTokens, char ***path, size_t *pathLength) {
   char *name = input[0];
 
@@ -87,6 +127,9 @@ void runCommand(char **input, size_t numOfTokens, char ***path, size_t *pathLeng
   }
   else if(strncmp(name, "path", 4) == 0) {
     runPath(input, numOfTokens, path, pathLength);
+  }
+  else {
+    runCommandFromPath(input, numOfTokens, *path, *pathLength);
   }
 }
 
