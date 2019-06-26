@@ -112,6 +112,9 @@ command_t* parseInput(strarray input, size_t *numOfCommands) {
     else if(strncmp(input.array[i], ">", 1) == 0) {
       // TODO: check i+1>input.length and throw error
       // TODO: also if input.array[i+2] does not exit or is != to "&" this is an error
+      if(i+2 < input.length && strncmp(input.array[i+2], "&", 1) != 0) {
+        return commands;
+      }
       char *file = input.array[i+1];
       
       appendCommand(&commands, numOfCommands, commandString, file);
@@ -119,7 +122,7 @@ command_t* parseInput(strarray input, size_t *numOfCommands) {
       commandString.array = realloc(commandString.array, 0);
       commandString.length = 0;
       
-      i++;
+      i += 2;
     }
     else {
       commandString.array = realloc(commandString.array, (commandString.length+1)*sizeof(char *));
@@ -176,7 +179,7 @@ void runPath(strarray input, strarray *path) {
   }
 }
 
-void executeProgram(command_t command, char *filePath) {
+pid_t executeProgram(command_t command, char *filePath) {
   int rc = fork();
   if(rc < 0) {
     error();
@@ -192,12 +195,11 @@ void executeProgram(command_t command, char *filePath) {
     error();
     exit(1);
   }
-  else {
-    int rc_wait = wait(NULL);
-  }
+  
+  return rc;
 }
 
-void runCommandFromPath(command_t command, strarray path) {
+pid_t runCommandFromPath(command_t command, strarray path) {
   char *filePath = NULL;
   for(size_t i = 0; i < path.length; i++) {
     strarray input = command.input;
@@ -208,17 +210,19 @@ void runCommandFromPath(command_t command, strarray path) {
     strcat(filePath, input.array[0]);
 
     if(access(filePath, X_OK) == 0) {
-      executeProgram(command, filePath);
+      pid_t pid = executeProgram(command, filePath);
       free(filePath);
-      return;
+      return pid;
     }
   }
   free(filePath);
 
   error();
+  return -1;
 }
 
 void runCommands(command_t *commands, size_t numOfCommands, strarray *path) {
+  int pid[numOfCommands];
   for(size_t i = 0; i < numOfCommands; i++) {
     strarray input = commands[i].input;
     char *name = input.array[0];
@@ -233,8 +237,12 @@ void runCommands(command_t *commands, size_t numOfCommands, strarray *path) {
       runPath(input, path);
     }
     else {
-      runCommandFromPath(commands[i], *path);
+      pid[i] = runCommandFromPath(commands[i], *path);
     }
+  }
+
+  for(size_t i = 0; i < numOfCommands; i++) {
+    waitpid(pid[i], NULL, WUNTRACED);
   }
 }
 
@@ -251,7 +259,9 @@ int main(int argc, char *argv[]) {
   char *line = NULL;
   size_t linecap = 0;
   ssize_t linelength;
-  printf("wish> ");
+  if(argc != 2) {
+    printf("wish> ");
+  }
   while((linelength = getline(&line, &linecap, stream)) > 0) {
     line[strcspn(line, "\n")] = 0;
 
@@ -264,7 +274,9 @@ int main(int argc, char *argv[]) {
 
     free(input.array);
 
-    printf("wish> ");
+    if(argc != 2) {
+      printf("wish> ");
+    }
   }
   free(line);
   free(path.array);
