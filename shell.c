@@ -37,17 +37,17 @@ FILE* getStream(int argc, char *argv[]) {
   }
 }
 
-void tokenize(char ***tokens, char *line, size_t linelength, size_t *numOfTokens) {
+void tokenize(char ***tokens, char *line, size_t *numOfTokens) {
   char *token;
-  size_t index = 0;
-  while((token = strsep(&line, " ")) != NULL) {
-    *tokens = realloc(*tokens, (index+1)*sizeof(char *));
-    (*tokens)[index] = malloc(strlen(token)+1);
-    strcpy((*tokens)[index], token);
-    index++;
+
+  size_t i = 0;
+  for(; (token = strsep(&line, " ")) != NULL; i++) {
+    *tokens = realloc(*tokens, (i+1)*sizeof(char *));
+    (*tokens)[i] = malloc(strlen(token)+1);
+    strcpy((*tokens)[i], token);
   }
 
-  *numOfTokens = index;
+  *numOfTokens = i;
 }
 
 void appendCommand(command_t **commands, size_t *numOfCommands, strarray commandString, char *output) {
@@ -236,7 +236,7 @@ int main(int argc, char *argv[]) {
   while((linelength = getline(&line, &linecap, stream)) > 0) {
     line[strcspn(line, "\n")] = 0;
 
-    tokenize(&buffer, line, linelength, &numOfTokens);
+    tokenize(&buffer, line, &numOfTokens);
     strarray input = {.array = buffer,
              .length = numOfTokens};
 
